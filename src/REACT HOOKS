@@ -1,0 +1,771 @@
+
+
+
+useState, useeffect, useform, useContext, useReducer, useCallBack, useMemo, useImperativeMethods, useMutationEffect, useRef, useLayoutEffect
+
+
+========================MyDialog
+
+import React, { Fragment } from 'react'
+import ReactDOM from 'react-dom'
+import Button from './Button'
+import { Container, Header, Body, Footer, useDialog } from './Dialog'
+import './style.css'
+
+function MyDialog() {
+  const { on, hide, getToggleProps, getContainerProps } = useDialog()
+
+  return (
+    <Fragment>
+      <Button {...getToggleProps()}>Show dialog</Button>
+
+      {on && (
+        <Container {...getContainerProps()}>
+          <Header>Dialog Title</Header>
+          <Body>Body</Body>
+          <Footer>
+            <Button onClick={hide}>Discard</Button>
+          </Footer>
+        </Container>
+      )}
+    </Fragment>
+  )
+}
+
+function App() {
+  return (
+    <div className="App">
+      <MyDialog />
+    </div>
+  )
+}
+
+const rootElement = document.getElementById('root')
+ReactDOM.render(<App />, rootElement)
+
+
+==========================useDialog
+
+import React, { useState, useRef, useEffect } from 'react'
+import Portal from '../Portal'
+import './style.css'
+
+const stopPropagation = e => e.stopPropagation()
+const callAll = (...fns) => (...args) => fns.forEach(fn => fn && fn(...args))
+
+export function useDialog() {
+  const [on, setOn] = useState(false)
+  const show = () => setOn(true)
+  const hide = () => setOn(false)
+  const toggle = () => setOn(!on)
+
+  const getToggleProps = (props = {}) => ({
+    'aria-controls': 'target',
+    'aria-expanded': Boolean(on),
+    ...props,
+    onClick: callAll(props.onClick, toggle),
+  })
+
+  const getContainerProps = (props = {}) => ({
+    ...props,
+    onClick: callAll(props.onClick, toggle),
+    onKeyDown: callAll(
+      props.onKeyDown,
+      ({ keyCode }) => keyCode === 27 && hide()
+    ),
+  })
+
+  return {
+    on,
+    show,
+    hide,
+    toggle,
+    getToggleProps,
+    getContainerProps,
+  }
+}
+
+export function Container(props) {
+  const overlayEl = useRef(null)
+
+  useEffect(() => {
+    overlayEl.current.focus()
+  })
+
+  return (
+    <Portal>
+      <div
+        className="dialog-overlay"
+        {...props}
+        ref={overlayEl}
+        aria-modal="true"
+        tabIndex="-1"
+      >
+        <div className="dialog-content" onClick={stopPropagation}>
+          {props.children}
+        </div>
+      </div>
+    </Portal>
+  )
+}
+
+export const Header = ({ children }) => (
+  <header className="dialog-header">{children}</header>
+)
+
+export const Body = ({ children }) => (
+  <div className="dialog-body">{children}</div>
+)
+
+export const Footer = ({ children }) => (
+  <footer className="dialog-footer">{children}</footer>
+)
+==============================
+
+========================useInput, useForm
+
+import React, { useState } from "react";
+import ReactDOM from "react-dom";
+import styled from "styled-components";
+import { useInput, useForm } from "./forms/hooks";
+import { Input } from "./forms/inputs";
+
+import "./styles.css";
+
+function App() {
+    const form = useForm();
+    const nameInput = useInput(
+        {
+            name: "name",
+            label: "Name",
+            validation: {
+                maxLength: 20,
+                required: true
+            }
+        },
+        form
+    );
+    const placeInput = useInput(
+        {
+            name: "place",
+            label: "Place",
+            validation: {
+                minLength: 5,
+                required: true
+            }
+        },
+        form
+    );
+
+    const numberInput = useInput(
+        {
+            name: "number",
+            label: "Some Number",
+            type: "number",
+            validation: {
+                customValidator: value => {
+                    if (value < 10) {
+                        return "This value must be more than 10";
+                    }
+                },
+                required: true
+            }
+        },
+        form
+    );
+
+    return (
+        <div className="App">
+            <h1>Form & Input hooks</h1>
+            <Form
+                onSubmit={e => {
+                    e.preventDefault();
+                    if (form.isValid()) {
+                        console.log("submit", form.values);
+                    }
+                }}
+            >
+                <Input {...nameInput} />
+                <Input {...placeInput} />
+                <Input {...numberInput} />
+                <button>Submit</button>
+            </Form>
+        </div>
+    );
+}
+
+const Form = styled.form`
+    display: flex;
+    flex-direction: column;
+    input,
+    button {
+        margin: 10px;
+    }
+`;
+
+const rootElement = document.getElementById("root");
+ReactDOM.render(<App />, rootElement);
+
+========================formReducer
+import { useEffect, useReducer } from "react";
+import { emailRegex } from "../Utils/regex";
+
+const formReducer = (state, action) => {
+    switch (action.type) {
+        case "setValidationRules": {
+            return {
+                ...state,
+                validationRules: {
+                    ...state.validationRules,
+                    ...action.payload
+                }
+            };
+        }
+        case "update": {
+            return {
+                ...state,
+                values: {
+                    ...state.values,
+                    ...(action.payload.values ? action.payload.values : {})
+                },
+                errors: {
+                    ...state.errors,
+                    ...action.payload.errors
+                }
+            };
+        }
+        case "setConfig": {
+            return {
+                ...state,
+                config: {
+                    ...state.config,
+                    ...action.payload
+                }
+            };
+        }
+        default: {
+            return state;
+        }
+    }
+};
+
+export const useForm = () => {
+    const [state, dispatch] = useReducer(formReducer, {
+        errors: {},
+        values: {},
+        validationRules: {},
+        config: {}
+    });
+
+    const getValues = () => {
+        return state.values;
+    };
+
+    const isValid = () => {
+        if (Object.keys(state.values).length === 0) {
+            return false;
+        }
+        return validateForm(state, dispatch);
+    };
+
+    return {
+        values: state.values,
+        errors: state.errors,
+        isValid,
+        getValues,
+        dispatch
+    };
+};
+
+export const useInput = ({ validation, defaultValue, ...config }, form) => {
+    useEffect(
+        () => {
+            form.dispatch({
+                type: "setValidationRules",
+                payload: { [config.name]: validation }
+            });
+            form.dispatch({
+                type: "setConfig",
+                payload: { [config.name]: config }
+            });
+        },
+        [config.validation]
+    );
+
+    const errors = form.errors[config.name] ? form.errors[config.name] : [];
+
+    const value = form.values[config.name] ? form.values[config.name] : "";
+
+    useEffect(
+        () => {
+            form.dispatch({
+                type: "update",
+                payload: {
+                    values: {
+                        [config.name]: defaultValue ? defaultValue : value
+                    },
+                    errors: {
+                        [config.name]: errors
+                    }
+                }
+            });
+        },
+        [config.name, defaultValue]
+    );
+
+    const valueSetter = e => {
+        let value;
+        if (e.target !== undefined) {
+            value = e.target.value;
+        } else {
+            value = e;
+        }
+
+        form.dispatch({
+            type: "update",
+            payload: {
+                values: {
+                    [config.name]: value
+                },
+                errors: {
+                    [config.name]: []
+                }
+            }
+        });
+    };
+
+    const validateField = e => {
+        const state = {
+            values: form.values,
+            errors: form.errors
+        };
+        let newErrors = [];
+        if (validation !== undefined) {
+            Object.keys(validation).forEach(key => {
+                // value, test, key, state
+                const validationConfig = {
+                    value,
+                    test: validation[key],
+                    key,
+                    state,
+                    displayName: config.placeholder
+                };
+
+                const err = handleValidation(validationConfig);
+                if (err) {
+                    newErrors.push(err);
+                }
+            });
+        }
+        form.dispatch({
+            type: "update",
+            payload: {
+                values: {
+                    [config.name]: value
+                },
+                errors: {
+                    [config.name]: newErrors
+                }
+            }
+        });
+    };
+
+    return {
+        ...config,
+        errors: errors,
+        onChange: valueSetter,
+        onBlur: validateField,
+        value: value
+    };
+};
+
+const validateForm = (state, dispatch) => {
+    const { values, validationRules, config } = state;
+    let isValid = true;
+    Object.entries(values).forEach(([name, value]) => {
+        const valueErrors = [];
+        Object.entries(validationRules[name]).forEach(([key, test]) => {
+            const validationConfig = {
+                value,
+                test,
+                key,
+                state,
+                displayName: config[name].placeholder
+            };
+            const validatorResponse = handleValidation(validationConfig);
+            if (validatorResponse !== undefined) {
+                valueErrors.push(validatorResponse);
+                isValid = false;
+            }
+        });
+        dispatch({
+            type: "update",
+            payload: {
+                values: {
+                    [name]: value
+                },
+                errors: {
+                    [name]: valueErrors
+                }
+            }
+        });
+    });
+    return isValid;
+};
+
+const handleValidation = ({ value, test, key, state, displayName }) => {
+    switch (key) {
+        case "maxLength": {
+            if (value.length > test) {
+                return `Maximum length for this input is ${test}`;
+            }
+            break;
+        }
+        case "minLength": {
+            if (value.length > 0 && value.length < test) {
+                return `Minimum length for this input is ${test}`;
+            }
+            break;
+        }
+        case "required": {
+            if (test === true && value.length < 1) {
+                return `${displayName} is required`;
+            }
+            break;
+        }
+        case "email": {
+            if (test === true && value.length > 0 && !emailRegex.test(value)) {
+                return "Please enter a valid email address";
+            }
+            break;
+        }
+        case "customValidator": {
+            return test(value, state);
+        }
+        default: {
+            return undefined;
+        }
+    }
+    return undefined;
+};
+
+==============================Input
+import React from "react";
+import styled from "styled-components";
+
+export const Input = ({ errors, label, ...props }) => {
+    console.log(errors);
+    return (
+        <InputContainer hasErrors={errors.length > 0}>
+            <label>{label}</label>
+            <input {...props} />
+            <ErrorList errors={errors} />
+        </InputContainer>
+    );
+};
+
+const InputContainer = styled.div`
+    label {
+        color: ${props => (props.hasErrors ? "#ff2222" : "#666666")};
+    }
+    input {
+        border-color: ${props => (props.hasErrors ? "#ff2222" : "#666666")};
+    }
+`;
+
+const ErrorList = ({ errors }) => {
+    return errors.length > 0 ? (
+        <Ul>
+            {errors.map(error => (
+                <li>{error}</li>
+            ))}
+        </Ul>
+    ) : null;
+};
+
+const Ul = styled.ul`
+    padding: 0px;
+    li {
+      background #ffdddd;
+      border 1px solid #ff9999;
+      padding: 2px;
+      margin-bottom: 2px;
+    }
+`;
+===========================REGEX
+
+// eslint-disable-next-line
+export const emailRegex = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+export const phoneNumberRegex = /[0-9+]{9,13}$/;
+export const postcodeRegex = /[0-9a-zA-Z-\s]{6,9}$/;
+
+
+======================== CounterDemo
+import React, { useState } from "react";
+import ReactDOM from "react-dom";
+
+import "./styles.css";
+
+function App() {
+  const [count, setCount] = useState(0);
+
+  return (
+    <div className="App">
+      <h1>Hello CodeSandbox</h1>
+      <h2>You clicked {count} times!</h2>
+
+      <button onClick={() => setCount(count - 1)}>Decrement</button>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  );
+}
+
+const rootElement = document.getElementById("root");
+ReactDOM.render(<App />, rootElement);
+
+======================================Combobox==============================
+import React, { forwardRef, useEffect, useRef, useState } from 'react'
+import ReactDOM, { createPortal } from 'react-dom'
+
+import { Portal } from './Portal'
+import { useFocusManager } from './useFocusManager'
+import { useItemList } from './useItemList'
+
+import './styles.css'
+
+function Combobox({ items, value, onChange, onSelect }) {
+  const filteredItems = items.filter(item => !value || item.includes(value))
+  const { focused, handleFocus, handleBlur } = useFocusManager()
+  const {
+    listId,
+    highlightedIndex,
+    getControllerProps,
+    getItemProps,
+  } = useItemList(filteredItems, onSelect)
+  return (
+    <>
+      <input
+        {...getControllerProps()}
+        aria-autocomplete="list"
+        value={value}
+        onChange={onChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+      />
+      {focused && (
+        <Portal>
+          <div
+            id={listId}
+            role="listbox"
+            tabIndex={0}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+          >
+            {filteredItems.map((item, itemIndex) => (
+              <div
+                {...getItemProps(itemIndex)}
+                role="option"
+                aria-selected={false}
+                style={{
+                  padding: 8,
+                  backgroundColor:
+                    highlightedIndex === itemIndex ? 'pink' : 'transparent',
+                }}
+              >
+                {item}
+              </div>
+            ))}
+          </div>
+        </Portal>
+      )}
+    </>
+  )
+}
+
+const items = [
+  'apple',
+  'orange',
+  'banana',
+  'pear',
+  'grape',
+  'kiwi',
+  'pineapple',
+]
+
+function App() {
+  const [value, setValue] = useState('')
+  return (
+    <Combobox
+      items={items}
+      value={value}
+      onChange={event => setValue(event.target.value)}
+      onSelect={setValue}
+    />
+  )
+}
+
+const rootElement = document.getElementById('root')
+ReactDOM.render(<App />, rootElement)
+
+===================================useItemList
+import { useRef, useState } from 'react'
+
+let itemListId = -1
+
+function getItemId(index) {
+  return index === null ? null : `item-${index}`
+}
+
+function useItemList(items, onSelect) {
+  const listId = `menu-${useRef(itemListId + 1).current}`
+  const [index, setIndex] = useState(null)
+  return {
+    listId,
+    highlightedIndex: index,
+    setHighlightedIndex: setIndex,
+    getControllerProps: () => ({
+      'aria-controls': listId,
+      'aria-activedescendant': getItemId(index),
+      onKeyDown: event => {
+        if (event.key === 'ArrowUp') {
+          const nextIndex = index - 1
+          setIndex(
+            index === null
+              ? items.length - 1
+              : nextIndex < 0
+              ? null
+              : nextIndex,
+          )
+        }
+        if (event.key === 'ArrowDown') {
+          const nextIndex = index + 1
+          setIndex(
+            index === null
+              ? 0
+              : nextIndex > items.length - 1
+              ? null
+              : nextIndex,
+          )
+        }
+        if (event.key === 'Enter') {
+          onSelect(items[index])
+        }
+      },
+    }),
+    getItemProps: itemIndex => ({
+      key: itemIndex,
+      id: getItemId(itemIndex),
+      onMouseEnter: () => setIndex(itemIndex),
+      onMouseLeave: () => setIndex(null),
+      onClick: () => onSelect(items[itemIndex]),
+    }),
+  }
+}
+
+export { useItemList }
+
+===================================GitHubUsers
+import React, { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
+
+function GitHubUsers() {
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    fetch("https://api.github.com/users")
+      .then(response => response.json())
+      .then(data => {
+        setUsers(data); // set users in state
+      });
+  }, []); // empty array because we only run once
+
+  return (
+    <div className="section">
+      {users.map(user => (
+        <div key={user.id} className="card">
+          <h5>{user.login}</h5>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const rootElement = document.getElementById("root");
+ReactDOM.render(<GitHubUsers />, rootElement);
+
+==========================
+import React from 'react';
+import ReactDOM from 'react-dom';
+import useLocalStorage from './use-local-storage';
+
+function App() {
+  // Similar to useState but first arg is key to the value in local storage
+  const [name, setName] = useLocalStorage('name', 'Bob');
+
+  return (
+    <div>
+      <input
+        type="text"
+        placeholder="Enter your name"
+        value={name}
+        onChange={e => setName(e.target.value)}
+      />
+    </div>
+  );
+}
+
+const rootElement = document.getElementById('root');
+ReactDOM.render(<App />, rootElement);
+
+=============================
+import React, { useEffect } from 'react'
+import ReactDOM from 'react-dom'
+import { useSpring, animated as anim } from 'react-spring'
+import './styles.css'
+
+const fast = { tension: 1200, friction: 40 }
+const slow = { mass: 10, tension: 200, friction: 50 }
+const trans = (x, y) => `translate3d(${x}px,${y}px,0) translate3d(-50%,-50%,0)`
+
+export default function Goo() {
+  // Here we form a natural trail, one spring following another.
+  // You can either update springs by overwriting values when you re-render the component.
+  // Or you can use the set function, which allows you to bypass React alltogether.
+  // We're dealing with mouse-input here so we choose the latter in order to prevent rendering.
+  const [{ pos1 }, set] = useSpring({ pos1: [0, 0], config: fast })
+  const [{ pos2 }] = useSpring({ pos2: pos1, config: slow })
+  const [{ pos3 }] = useSpring({ pos3: pos2, config: slow })
+  // Effect for fetching mouse coordinates
+  useEffect(() => {
+    // "set" updates the first spring, the other springs are bound and will follow.
+    // It won't cause a new render pass and the animated values down in the view
+    // will still naturally reflect animated changes.
+    const handler = ({ clientX, clientY }) => set({ pos1: [clientX, clientY] })
+    window.addEventListener('mousemove', handler)
+    return () => window.removeEventListener('mousemove', handler)
+  }, [])
+  // We render the view like always, but we're using animated.el whereever
+  // animated values are being used. Just like with regular "native" springs this
+  // makes elements transient.
+  return (
+    <>
+      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
+        <filter id="goo">
+          <feGaussianBlur in="SourceGraphic" result="blur" stdDeviation="30" />
+          <feColorMatrix in="blur" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 30 -7" />
+        </filter>
+      </svg>
+      <div class="hooks-main">
+        <div class="hooks-filter">
+          <anim.div class="b1" style={{ transform: pos3.interpolate(trans) }} />
+          <anim.div class="b2" style={{ transform: pos2.interpolate(trans) }} />
+          <anim.div class="b3" style={{ transform: pos1.interpolate(trans) }} />
+        </div>
+      </div>
+    </>
+  )
+}
+
+ReactDOM.render(<Goo />, document.getElementById('root'))
+
+=============================
